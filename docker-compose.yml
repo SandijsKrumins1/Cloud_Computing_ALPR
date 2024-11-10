@@ -1,0 +1,81 @@
+services:
+  minio:
+    image: minio/minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    command: server --address ":9000" --console-address ":9001" /data
+    networks:
+      - app-network
+    volumes:
+      - minio-data:/data
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks:
+      - app-network
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+  mongodb:
+    image: mongo:latest
+    ports: 
+      - 27017:27017
+    networks:
+      - app-network
+    volumes:
+      - mongo-data:/data
+  front-end:
+    build: ./Front_End
+    ports:
+      - "80:80"
+    networks:
+      - app-network
+  vehicle-entry-service:
+    build: ./Vehicle_Entry_Service
+    ports:
+      - "3001:3001"
+    depends_on:
+      - minio
+      - rabbitmq
+    environment:
+      - MINIO_ENDPOINT=minio
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
+    networks:
+      - app-network
+    entrypoint: ["sh", "-c", "sleep 10 && node Entry_Server.js"]
+  vehicle-exit-service:
+    build: ./Vehicle_Exit_Service
+    ports:
+      - "3002:3002"
+    depends_on:
+      - minio
+      - rabbitmq
+    environment:
+      - MINIO_ENDPOINT=minio
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
+    networks:
+      - app-network
+    entrypoint: ["sh", "-c", "sleep 10 && node Exit_Server.js"]
+  openalpr-service:
+    build: ./OpenALPR_Service
+    ports: 
+      - "3003:3003"
+    depends_on:
+      - minio
+      - rabbitmq
+      - mongodb
+    networks:
+      - app-network
+    entrypoint: ["sh", "-c", "sleep 10 && node OpenALPR_Server.js"]
+networks:
+  app-network:
+    driver: bridge
+volumes:
+  minio-data:
+  rabbitmq-data:
+  mongo-data:

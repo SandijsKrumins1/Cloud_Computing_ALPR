@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <link rel="stylesheet" href="style.css">
+    <title>File Upload</title>
+</head>
+<body>
+    <div>
+    <h2>Upload File to Server</h2>
+    </div><div>
+    <h1>Entry</h1>
+    </div><div>
+    <input type="file" id="fileInput" />
+    </div><div>
+    <button onclick="uploadFile()">Upload</button>
+    </div><div>
+    <h1>Exit</h1>
+    </div><div>
+    <input type="file" id="fileInputExit" />
+    </div><div>
+    <button onclick="uploadFileExit()">Upload</button>
+    </div><div>
+    <p id="status"></p>
+    </div>
+
+
+    <script>
+        async function uploadFile() {
+            const fileInput = document.getElementById('fileInput');
+            const file = fileInput.files[0];
+
+            if (!file) {
+                document.getElementById('status').innerText = 'Please select a file to upload!';
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('image', file);
+
+            try {
+                document.getElementById('status').innerText = 'Uploading...';
+
+               
+                const response = await fetch('http://localhost:3001/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+               
+                if (response.ok) {
+                    document.getElementById('status').innerText = 'File uploaded successfully!';
+                } else {
+                    document.getElementById('status').innerText = 'Failed to upload file!';
+                }
+            } catch (error) {
+                document.getElementById('status').innerText = 'Error uploading file!';
+                console.error('Error:', error);
+            }
+        }
+        async function uploadFileExit() {
+            const fileInput = document.getElementById('fileInput');
+            const file = fileInputExit.files[0];
+
+            if (!file) {
+                document.getElementById('status').innerText = 'Please select a file to upload!';
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('image', file);
+
+            try {
+                document.getElementById('status').innerText = 'Uploading...';
+
+                
+                const response = await fetch('http://localhost:3002/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                
+                if (response.ok) {
+                    document.getElementById('status').innerText = 'File uploaded successfully!';
+                } else {
+                    document.getElementById('status').innerText = 'Failed to upload file!';
+                }
+            } catch (error) {
+                document.getElementById('status').innerText = 'Error uploading file!';
+                console.error('Error:', error);
+            }
+        }
+    </script>
+    
+
+</body>
+</html>
