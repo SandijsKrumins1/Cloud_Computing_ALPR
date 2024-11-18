@@ -5,6 +5,7 @@ const amqp = require('amqplib');
 const fs = require('fs');
 const cors = require('cors');
 require('dotenv').config();
+
 console.log('MINIO_ENDPOINT:', process.env.MINIO_ENDPOINT);
 console.log('MINIO_PORT:', process.env.MINIO_PORT);
 console.log('MINIO_ACCESS_KEY:', process.env.MINIO_ACCESS_KEY);
@@ -27,27 +28,44 @@ const minioClient = new Minio.Client({
 });
 
 async function ensureMinioBucket(bucketName) {
-  const bucketExists = await minioClient.bucketExists(bucketName);
-  if (!bucketExists) {
-    await minioClient.makeBucket(bucketName);
-    console.log(`Bucket '${bucketName}' created in Minio.`);
-  } else {
-    console.log(`Bucket '${bucketName}' already exists in Minio.`);
+  try {
+    const bucketExists = await minioClient.bucketExists(bucketName);
+    if (!bucketExists) {
+      await minioClient.makeBucket(bucketName);
+      console.log(`Bucket '${bucketName}' created in Minio.`);
+    } else {
+      console.log(`Bucket '${bucketName}' already exists in Minio.`);
+    }
+  } catch (error) {
+    console.error('Failed to ensure Minio bucket:', error);
+    throw new Error('Minio bucket initialization failed');
   }
 }
 
 // Set up RabbitMQ connection
 let rabbitChannel;
 async function connectToRabbitMQ() {
-  const connection = await amqp.connect(process.env.RABBITMQ_URL);
-  rabbitChannel = await connection.createChannel();
-  await rabbitChannel.assertQueue(process.env.QUEUE_NAME);
+  try {
+    const connection = await amqp.connect(process.env.RABBITMQ_URL);
+    rabbitChannel = await connection.createChannel();
+    await rabbitChannel.assertQueue(process.env.QUEUE_NAME);
+    console.log('Connected to RabbitMQ and queue asserted.');
+  } catch (error) {
+    console.error('Failed to connect to RabbitMQ:', error);
+    throw new Error('RabbitMQ connection failed');
+  }
 }
 
-connectToRabbitMQ().catch(console.error);
-const bucketName = process.env.MINIO_BUCKET;
-ensureMinioBucket(bucketName);
-
+// Initialize connections to external services
+(async () => {
+  try {
+    await connectToRabbitMQ();
+    await ensureMinioBucket(process.env.MINIO_BUCKET);
+  } catch (error) {
+    console.error('Initialization failed:', error.message);
+    process.exit(1); // Exit if initialization fails
+  }
+})();
 
 // Endpoint to handle file upload for vehicle entry
 app.post('/upload', upload.single('image'), async (req, res) => {
@@ -64,17 +82,34 @@ app.post('/upload', upload.single('image'), async (req, res) => {
 
     // Publish message to RabbitMQ with file name
     const message = JSON.stringify({ fileName, eventType: 'entry' });
+    if (!rabbitChannel) throw new Error('RabbitMQ channel is not available');
     rabbitChannel.sendToQueue(process.env.QUEUE_NAME, Buffer.from(message));
     console.log(`Message sent to RabbitMQ: ${message}`);
 
     res.send('File uploaded and processed successfully.');
   } catch (error) {
     console.error('Error processing file:', error);
-    res.status(500).send('Failed to process the file.');
+    res.status(500).send('Failed to process the file. Please try again.');
   } finally {
-    // Delete the local file after upload
-    fs.unlinkSync(file.path);
+    // Delete the local file after upload attempt
+    try {
+      fs.unlinkSync(file.path);
+    } catch (unlinkError) {
+      console.error('Failed to delete local file:', unlinkError);
+    }
   }
+});
+
+// Handle unexpected errors gracefully
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  // Optionally, send alert, log error, etc.
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
+  // Clean up here if needed, then exit
+  process.exit(1);
 });
 
 app.listen(port, () => {

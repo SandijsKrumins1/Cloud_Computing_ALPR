@@ -9,135 +9,208 @@ const exec = require('child_process').exec;
 const mongo = require('mongodb');
 const nodemailer = require('nodemailer');
 require('dotenv').config();
+
 const app = express();
 app.use(cors());
 const port = process.env.PORT || 3003;
 
-
+// Configure Nodemailer
 const transporter = nodemailer.createTransport({
-    host: "smtp.mailersend.net",
-    port: 587,
-    secure: false,
-    auth: {
-      user: 'MS_O67v3Y@trial-o65qngky8qolwr12.mlsender.net',
-      pass: 'Or35Lsm11ndDVJOd'
-    }
+  host: "smtp.mailersend.net",
+  port: 587,
+  secure: false,
+  auth: {
+    user: 'MS_O67v3Y@trial-o65qngky8qolwr12.mlsender.net',
+    pass: 'Or35Lsm11ndDVJOd'
+  }
 });
 
+// Configure Minio client
 const minioClient = new Minio.Client({
-    endPoint: process.env.MINIO_ENDPOINT,
-    port: parseInt(process.env.MINIO_PORT, 10),
-    useSSL: false,
-    accessKey: process.env.MINIO_ACCESS_KEY,
-    secretKey: process.env.MINIO_SECRET_KEY,
+  endPoint: process.env.MINIO_ENDPOINT,
+  port: parseInt(process.env.MINIO_PORT, 10),
+  useSSL: false,
+  accessKey: process.env.MINIO_ACCESS_KEY,
+  secretKey: process.env.MINIO_SECRET_KEY,
 });
 
 let collection;
 
-async function connectMongo(){
+// Connect to MongoDB
+async function connectMongo() {
+  try {
     const mongoClient = new mongo.MongoClient(process.env.MONGO_URL);
     await mongoClient.connect();
     const database = mongoClient.db(process.env.MONGO_DB);
     collection = database.collection(process.env.MONGO_COL);
+    console.log('Connected to MongoDB');
+  } catch (error) {
+    console.error('Failed to connect to MongoDB:', error);
+    process.exit(1);
+  }
 }
 
+// Set up RabbitMQ connection
 let rabbitChannel;
-
 async function connectToRabbitMQ() {
+  try {
     const connection = await amqp.connect(process.env.RABBITMQ_URL);
     rabbitChannel = await connection.createChannel();
     await rabbitChannel.assertQueue(process.env.QUEUE_NAME_ENTRY);
     await rabbitChannel.assertQueue(process.env.QUEUE_NAME_EXIT);
     processEntry(rabbitChannel);
     processExit(rabbitChannel);
+    console.log('Connected to RabbitMQ');
+  } catch (error) {
+    console.error('Failed to connect to RabbitMQ:', error);
+    process.exit(1);
+  }
 }
 
-async function processEntry(rabbitChannel){
-    rabbitChannel.consume(process.env.QUEUE_NAME_ENTRY, (msg) => {
-        if (msg !== null) {
-            console.log(`Received message: ${msg.content.toString()}`);
-            const message = JSON.parse(msg.content.toString());
-            const { fileName, eventType } = message;
-            processEntryImage(fileName);
-            rabbitChannel.ack(msg);
-        }
-    });
+// Process entry queue messages
+async function processEntry(rabbitChannel) {
+  rabbitChannel.consume(process.env.QUEUE_NAME_ENTRY, async (msg) => {
+    if (msg) {
+      console.log(`Received entry message: ${msg.content.toString()}`);
+      const message = JSON.parse(msg.content.toString());
+      const { fileName } = message;
+
+      try {
+        await processEntryImage(fileName);
+      } catch (error) {
+        console.error('Error processing entry image:', error);
+      } finally {
+        rabbitChannel.ack(msg);
+      }
+    }
+  });
 }
 
-
+// Process entry images
 async function processEntryImage(fileName) {
-    const bucketName = process.env.MINIO_BUCKET;
-    await minioClient.fGetObject(bucketName, fileName, path.join(__dirname, fileName));
-    let number = await runALPR(fileName);
-    console.log(number);
-    let dateEntry = fileName.split("_");
-    console.log(dateEntry[0])
-    collection.insertOne( { Plate: number , time_arrive: dateEntry[0] , time_exit:"" , time_spent: "", email:"openalprsandijskrumins@gmail.com" } );
-}
+  const localFilePath = path.join(__dirname, fileName);
+  const bucketName = process.env.MINIO_BUCKET;
 
-async function processExit(rabbitChannel){
-    rabbitChannel.consume(process.env.QUEUE_NAME_EXIT, (msg) => {
-        if (msg !== null) {
-            console.log(`Received message: ${msg.content.toString()}`);
-            const message = JSON.parse(msg.content.toString());
-            const { fileName, eventType } = message;
-            processExitImage(fileName);
-            rabbitChannel.ack(msg);
-        }
+  try {
+    await minioClient.fGetObject(bucketName, fileName, localFilePath);
+    const number = await runALPR(localFilePath);
+    const dateEntry = fileName.split("_")[0];
+
+    await collection.insertOne({
+      Plate: number,
+      time_arrive: dateEntry,
+      time_exit: "",
+      time_spent: "",
+      email: "openalprsandijskrumins@gmail.com"
     });
+
+    console.log(`Entry image processed for Plate: ${number}`);
+  } finally {
+    // Ensure the local file is deleted
+    deleteLocalFile(localFilePath);
+  }
 }
 
+// Process exit queue messages
+async function processExit(rabbitChannel) {
+  rabbitChannel.consume(process.env.QUEUE_NAME_EXIT, async (msg) => {
+    if (msg) {
+      console.log(`Received exit message: ${msg.content.toString()}`);
+      const message = JSON.parse(msg.content.toString());
+      const { fileName } = message;
 
+      try {
+        await processExitImage(fileName);
+      } catch (error) {
+        console.error('Error processing exit image:', error);
+      } finally {
+        rabbitChannel.ack(msg);
+      }
+    }
+  });
+}
+
+// Process exit images
 async function processExitImage(fileName) {
-    const bucketName = process.env.MINIO_BUCKET;
-    await minioClient.fGetObject(bucketName, fileName, path.join(__dirname, fileName));
-    let number = await runALPR(fileName);
-    console.log(number);
-    let dateExit = fileName.split("_");
-    console.log(dateExit[0])
-    const user = await collection.findOne({ Plate: number }, { projection: { time_arrive: 1 , email: 1 } },{sort: { _id: -1 }});
-    let timeSpent = parseInt(dateExit[0]) - parseInt(user.time_arrive) ;
-    collection.updateOne({ Plate: number },{ $set: {time_exit: dateExit[0], time_spent: timeSpent}},{sort: { _id: -1 }});
-    let timeSpentHuman = await dhm(timeSpent);
-    let mailOptions = {
+  const localFilePath = path.join(__dirname, fileName);
+  const bucketName = process.env.MINIO_BUCKET;
+
+  try {
+    await minioClient.fGetObject(bucketName, fileName, localFilePath);
+    const number = await runALPR(localFilePath);
+    const dateExit = fileName.split("_")[0];
+    const user = await collection.findOne({ Plate: number }, { sort: { _id: -1 } });
+
+    if (user) {
+      const timeSpent = parseInt(dateExit) - parseInt(user.time_arrive);
+      await collection.updateOne({ Plate: number }, { $set: { time_exit: dateExit, time_spent: timeSpent } });
+      const timeSpentHuman = await dhm(timeSpent);
+
+      const mailOptions = {
         from: 'MS_O67v3Y@trial-o65qngky8qolwr12.mlsender.net',
         to: user.email,
-        subject: `jūsu numurzīmes numurs : ${number}`,
-        text: `Ir pavadijis : ${timeSpentHuman}`
-    };
-    transporter.sendMail(mailOptions, function(error, info){
-        if (error) {
-          console.log(error);
-        } else {
-          console.log('Email sent: ' + info.response);
-        }
-    });
-}
-async function dhm (ms) {
-    const days = Math.floor(ms / (24*60*60*1000));
-    const daysms = ms % (24*60*60*1000);
-    const hours = Math.floor(daysms / (60*60*1000));
-    const hoursms = ms % (60*60*1000);
-    const minutes = Math.floor(hoursms / (60*1000));
-    const minutesms = ms % (60*1000);
-    const sec = Math.floor(minutesms / 1000);
-    return days + " days " + hours + " hours " + minutes + " mins " + sec + " secs ";
+        subject: `Your plate number: ${number}`,
+        text: `Time spent: ${timeSpentHuman}`
+      };
+      await transporter.sendMail(mailOptions);
+      console.log(`Exit image processed and email sent to ${user.email}`);
+    }
+  } finally {
+    // Ensure the local file is deleted
+    deleteLocalFile(localFilePath);
   }
-
-async function runALPR(fileName){
-    return new Promise((resolve,reject) => {
-        const command = `alpr -c eu -p lv -j ${fileName}`;
-        exec(command, (error, stdout, stderr) => {
-            let plateOutput = JSON.parse(stdout.toString());
-            console.log(plateOutput);
-            resolve(plateOutput.results[0].plate);
-        });
-    });
 }
 
-connectToRabbitMQ().catch(console.error);
-connectMongo();
-
-app.listen(port, () => {
-    console.log(`Vehicle ALPR Service running on port ${port}`);
+// Delete local file function
+function deleteLocalFile(filePath) {
+  fs.unlink(filePath, (err) => {
+    if (err) console.error('Failed to delete local file:', err);
+    else console.log(`Deleted local file: ${filePath}`);
   });
+}
+
+// Convert milliseconds to days, hours, minutes, and seconds
+async function dhm(ms) {
+  const days = Math.floor(ms / (24 * 60 * 60 * 1000));
+  const daysms = ms % (24 * 60 * 60 * 1000);
+  const hours = Math.floor(daysms / (60 * 60 * 1000));
+  const hoursms = ms % (60 * 60 * 1000);
+  const minutes = Math.floor(hoursms / (60 * 1000));
+  const sec = Math.floor((ms % (60 * 1000)) / 1000);
+  return `${days} days ${hours} hours ${minutes} mins ${sec} secs`;
+}
+
+// Run ALPR on the image
+async function runALPR(fileName) {
+  return new Promise((resolve, reject) => {
+    const command = `alpr -c eu -j ${fileName}`;
+    exec(command, (error, stdout, stderr) => {
+      if (error) {
+        console.error('ALPR execution failed:', error);
+        reject(error);
+      } else {
+        const plateOutput = JSON.parse(stdout);
+        resolve(plateOutput.results[0]?.plate || "Unknown");
+      }
+    });
+  });
+}
+
+// Initialize connections to external services
+connectMongo();
+connectToRabbitMQ().catch(console.error);
+
+// Handle global errors
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection:', reason);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
+  process.exit(1); // Exit after logging
+});
+
+// Start server
+app.listen(port, () => {
+  console.log(`Vehicle ALPR Service running on port ${port}`);
+});
