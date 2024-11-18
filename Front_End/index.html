@@ -5,24 +5,23 @@
     <title>File Upload</title>
 </head>
 <body>
-    <div>
-    <h2>Upload File to Server</h2>
-    </div><div>
-    <h1>Entry</h1>
-    </div><div>
-    <input type="file" id="fileInput" />
-    </div><div>
-    <button onclick="uploadFile()">Upload</button>
-    </div><div>
-    <h1>Exit</h1>
-    </div><div>
-    <input type="file" id="fileInputExit" />
-    </div><div>
-    <button onclick="uploadFileExit()">Upload</button>
-    </div><div>
-    <p id="status"></p>
-    </div>
+    <div class="container">
+        <h2>Upload File to Server</h2>
+        
+        <div class="upload-section">
+            <h1>Entry</h1>
+            <input type="file" id="fileInput" />
+            <button onclick="uploadFile()">Upload</button>
+        </div>
 
+        <div class="upload-section">
+            <h1>Exit</h1>
+            <input type="file" id="fileInputExit" />
+            <button onclick="uploadFileExit()">Upload</button>
+        </div>
+
+        <p id="status"></p>
+    </div>
 
     <script>
         async function uploadFile() {
@@ -39,14 +38,12 @@
 
             try {
                 document.getElementById('status').innerText = 'Uploading...';
-
-               
+                
                 const response = await fetch('http://localhost:3001/upload', {
                     method: 'POST',
                     body: formData
                 });
-
-               
+                
                 if (response.ok) {
                     document.getElementById('status').innerText = 'File uploaded successfully!';
                 } else {
@@ -57,9 +54,10 @@
                 console.error('Error:', error);
             }
         }
+
         async function uploadFileExit() {
-            const fileInput = document.getElementById('fileInput');
-            const file = fileInputExit.files[0];
+            const fileInput = document.getElementById('fileInputExit');
+            const file = fileInput.files[0];
 
             if (!file) {
                 document.getElementById('status').innerText = 'Please select a file to upload!';
@@ -71,13 +69,11 @@
 
             try {
                 document.getElementById('status').innerText = 'Uploading...';
-
                 
                 const response = await fetch('http://localhost:3002/upload', {
                     method: 'POST',
                     body: formData
                 });
-
                 
                 if (response.ok) {
                     document.getElementById('status').innerText = 'File uploaded successfully!';
@@ -90,7 +86,5 @@
             }
         }
     </script>
-    
-
 </body>
 </html>
