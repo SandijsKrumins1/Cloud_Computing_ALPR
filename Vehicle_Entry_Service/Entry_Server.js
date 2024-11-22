@@ -70,7 +70,9 @@ async function connectToRabbitMQ() {
 // Endpoint to handle file upload for vehicle entry
 app.post('/upload', upload.single('image'), async (req, res) => {
   const file = req.file;
+  const email = req.body.email;
   if (!file) return res.status(400).send('No file uploaded.');
+  if (!email) return res.status(400).send('Email is required.');
 
   const fileName = `${Date.now()}_${file.originalname}`;
   const bucket = process.env.MINIO_BUCKET;
@@ -81,7 +83,7 @@ app.post('/upload', upload.single('image'), async (req, res) => {
     console.log(`File uploaded to Minio: ${fileName}`);
 
     // Publish message to RabbitMQ with file name
-    const message = JSON.stringify({ fileName, eventType: 'entry' });
+    const message = JSON.stringify({ fileName, email});
     if (!rabbitChannel) throw new Error('RabbitMQ channel is not available');
     rabbitChannel.sendToQueue(process.env.QUEUE_NAME, Buffer.from(message));
     console.log(`Message sent to RabbitMQ: ${message}`);

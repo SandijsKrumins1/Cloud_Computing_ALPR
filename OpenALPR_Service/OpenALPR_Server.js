@@ -74,9 +74,10 @@ async function processEntry(rabbitChannel) {
       console.log(`Received entry message: ${msg.content.toString()}`);
       const message = JSON.parse(msg.content.toString());
       const { fileName } = message;
+      const { email } = message;
 
       try {
-        await processEntryImage(fileName);
+        await processEntryImage(fileName, email);
       } catch (error) {
         console.error('Error processing entry image:', error);
       } finally {
@@ -87,7 +88,7 @@ async function processEntry(rabbitChannel) {
 }
 
 // Process entry images
-async function processEntryImage(fileName) {
+async function processEntryImage(fileName, email) {
   const localFilePath = path.join(__dirname, fileName);
   const bucketName = process.env.MINIO_BUCKET;
 
@@ -101,7 +102,7 @@ async function processEntryImage(fileName) {
       time_arrive: dateEntry,
       time_exit: "",
       time_spent: "",
-      email: "openalprsandijskrumins@gmail.com"
+      email: email
     });
 
     console.log(`Entry image processed for Plate: ${number}`);

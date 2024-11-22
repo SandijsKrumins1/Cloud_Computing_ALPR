@@ -81,7 +81,7 @@ app.post('/upload', upload.single('image'), async (req, res) => {
     console.log(`File uploaded to Minio: ${fileName}`);
 
     // Publish message to RabbitMQ with file name
-    const message = JSON.stringify({ fileName, eventType: 'exit' });
+    const message = JSON.stringify({ fileName});
     if (!rabbitChannel) throw new Error('RabbitMQ channel is not available');
     rabbitChannel.sendToQueue(process.env.QUEUE_NAME, Buffer.from(message));
     console.log(`Message sent to RabbitMQ: ${message}`);

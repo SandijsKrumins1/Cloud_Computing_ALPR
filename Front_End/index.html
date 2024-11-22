@@ -10,6 +10,7 @@
         
         <div class="upload-section">
             <h1>Entry</h1>
+            <input type="email" id="emailInput" placeholder="Enter email" />
             <input type="file" id="fileInput" />
             <button onclick="uploadFile()">Upload</button>
         </div>
@@ -26,7 +27,9 @@
     <script>
         async function uploadFile() {
             const fileInput = document.getElementById('fileInput');
+            const emailInput = document.getElementById('emailInput');
             const file = fileInput.files[0];
+            const email = emailInput.value.trim();
 
             if (!file) {
                 document.getElementById('status').innerText = 'Please select a file to upload!';
@@ -35,6 +38,7 @@
 
             const formData = new FormData();
             formData.append('image', file);
+            formData.append('email', email);
 
             try {
                 document.getElementById('status').innerText = 'Uploading...';
