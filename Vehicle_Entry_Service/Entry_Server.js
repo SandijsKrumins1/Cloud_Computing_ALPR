@@ -15,10 +15,10 @@ const app = express();
 app.use(cors());
 const port = process.env.PORT || 3001;
 
-// Configure Multer for file uploads
+
 const upload = multer({ dest: 'uploads/' });
 
-// Configure Minio client
+
 const minioClient = new Minio.Client({
   endPoint: process.env.MINIO_ENDPOINT,
   port: parseInt(process.env.MINIO_PORT, 10),
@@ -42,7 +42,7 @@ async function ensureMinioBucket(bucketName) {
   }
 }
 
-// Set up RabbitMQ connection
+
 let rabbitChannel;
 async function connectToRabbitMQ() {
   try {
@@ -56,18 +56,18 @@ async function connectToRabbitMQ() {
   }
 }
 
-// Initialize connections to external services
+
 (async () => {
   try {
     await connectToRabbitMQ();
     await ensureMinioBucket(process.env.MINIO_BUCKET);
   } catch (error) {
     console.error('Initialization failed:', error.message);
-    process.exit(1); // Exit if initialization fails
+    process.exit(1); 
   }
 })();
 
-// Endpoint to handle file upload for vehicle entry
+
 app.post('/upload', upload.single('image'), async (req, res) => {
   const file = req.file;
   const email = req.body.email;
@@ -78,11 +78,11 @@ app.post('/upload', upload.single('image'), async (req, res) => {
   const bucket = process.env.MINIO_BUCKET;
 
   try {
-    // Save file to Minio
+ 
     await minioClient.fPutObject(bucket, fileName, file.path);
     console.log(`File uploaded to Minio: ${fileName}`);
 
-    // Publish message to RabbitMQ with file name
+
     const message = JSON.stringify({ fileName, email});
     if (!rabbitChannel) throw new Error('RabbitMQ channel is not available');
     rabbitChannel.sendToQueue(process.env.QUEUE_NAME, Buffer.from(message));
@@ -93,7 +93,7 @@ app.post('/upload', upload.single('image'), async (req, res) => {
     console.error('Error processing file:', error);
     res.status(500).send('Failed to process the file. Please try again.');
   } finally {
-    // Delete the local file after upload attempt
+
     try {
       fs.unlinkSync(file.path);
     } catch (unlinkError) {
@@ -102,15 +102,13 @@ app.post('/upload', upload.single('image'), async (req, res) => {
   }
 });
 
-// Handle unexpected errors gracefully
+
 process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-  // Optionally, send alert, log error, etc.
 });
 
 process.on('uncaughtException', (error) => {
   console.error('Uncaught Exception:', error);
-  // Clean up here if needed, then exit
   process.exit(1);
 });
 

@@ -14,7 +14,7 @@ const app = express();
 app.use(cors());
 const port = process.env.PORT || 3003;
 
-// Configure Nodemailer
+
 const transporter = nodemailer.createTransport({
   host: "smtp.mailersend.net",
   port: 587,
@@ -25,7 +25,7 @@ const transporter = nodemailer.createTransport({
   }
 });
 
-// Configure Minio client
+
 const minioClient = new Minio.Client({
   endPoint: process.env.MINIO_ENDPOINT,
   port: parseInt(process.env.MINIO_PORT, 10),
@@ -36,7 +36,6 @@ const minioClient = new Minio.Client({
 
 let collection;
 
-// Connect to MongoDB
 async function connectMongo() {
   try {
     const mongoClient = new mongo.MongoClient(process.env.MONGO_URL);
@@ -50,7 +49,7 @@ async function connectMongo() {
   }
 }
 
-// Set up RabbitMQ connection
+
 let rabbitChannel;
 async function connectToRabbitMQ() {
   try {
@@ -67,7 +66,7 @@ async function connectToRabbitMQ() {
   }
 }
 
-// Process entry queue messages
+
 async function processEntry(rabbitChannel) {
   rabbitChannel.consume(process.env.QUEUE_NAME_ENTRY, async (msg) => {
     if (msg) {
@@ -87,7 +86,7 @@ async function processEntry(rabbitChannel) {
   });
 }
 
-// Process entry images
+
 async function processEntryImage(fileName, email) {
   const localFilePath = path.join(__dirname, fileName);
   const bucketName = process.env.MINIO_BUCKET;
@@ -107,12 +106,11 @@ async function processEntryImage(fileName, email) {
 
     console.log(`Entry image processed for Plate: ${number}`);
   } finally {
-    // Ensure the local file is deleted
     deleteLocalFile(localFilePath);
   }
 }
 
-// Process exit queue messages
+
 async function processExit(rabbitChannel) {
   rabbitChannel.consume(process.env.QUEUE_NAME_EXIT, async (msg) => {
     if (msg) {
@@ -131,7 +129,7 @@ async function processExit(rabbitChannel) {
   });
 }
 
-// Process exit images
+
 async function processExitImage(fileName) {
   const localFilePath = path.join(__dirname, fileName);
   const bucketName = process.env.MINIO_BUCKET;
@@ -157,12 +155,11 @@ async function processExitImage(fileName) {
       console.log(`Exit image processed and email sent to ${user.email}`);
     }
   } finally {
-    // Ensure the local file is deleted
     deleteLocalFile(localFilePath);
   }
 }
 
-// Delete local file function
+
 function deleteLocalFile(filePath) {
   fs.unlink(filePath, (err) => {
     if (err) console.error('Failed to delete local file:', err);
@@ -170,7 +167,7 @@ function deleteLocalFile(filePath) {
   });
 }
 
-// Convert milliseconds to days, hours, minutes, and seconds
+
 async function dhm(ms) {
   const days = Math.floor(ms / (24 * 60 * 60 * 1000));
   const daysms = ms % (24 * 60 * 60 * 1000);
@@ -181,7 +178,7 @@ async function dhm(ms) {
   return `${days} days ${hours} hours ${minutes} mins ${sec} secs`;
 }
 
-// Run ALPR on the image
+
 async function runALPR(fileName) {
   return new Promise((resolve, reject) => {
     const command = `alpr -c eu -j ${fileName}`;
@@ -197,18 +194,18 @@ async function runALPR(fileName) {
   });
 }
 
-// Initialize connections to external services
+
 connectMongo();
 connectToRabbitMQ().catch(console.error);
 
-// Handle global errors
+
 process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled Rejection:', reason);
 });
 
 process.on('uncaughtException', (error) => {
   console.error('Uncaught Exception:', error);
-  process.exit(1); // Exit after logging
+  process.exit(1);
 });
 
 // Start server
