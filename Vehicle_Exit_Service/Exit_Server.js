@@ -18,7 +18,7 @@ const port = process.env.PORT || 3002;
 
 const upload = multer({ dest: 'uploads/' });
 
-
+// Izveido jaunu Minio klientu
 const minioClient = new Minio.Client({
   endPoint: process.env.MINIO_ENDPOINT,
   port: parseInt(process.env.MINIO_PORT, 10),
@@ -26,7 +26,7 @@ const minioClient = new Minio.Client({
   accessKey: process.env.MINIO_ACCESS_KEY,
   secretKey: process.env.MINIO_SECRET_KEY,
 });
-
+// Pārbauda vai ir izveidots Minio Bucket un ja nav izveido
 async function ensureMinioBucket(bucketName) {
   try {
     const bucketExists = await minioClient.bucketExists(bucketName);
@@ -42,7 +42,7 @@ async function ensureMinioBucket(bucketName) {
   }
 }
 
-
+// Izveido savienojumu ar RabbitMQ
 let rabbitChannel;
 async function connectToRabbitMQ() {
   try {
@@ -56,7 +56,7 @@ async function connectToRabbitMQ() {
   }
 }
 
-
+// Iniciālizē vajadzīgos savienojumus
 (async () => {
   try {
     await connectToRabbitMQ();
@@ -67,7 +67,7 @@ async function connectToRabbitMQ() {
   }
 })();
 
-
+// Saņem failu no post metodes augšuplādē to uz Minio un pievieno faila nosaukumu RabbitMQ rindā
 app.post('/upload', upload.single('image'), async (req, res) => {
   const file = req.file;
   if (!file) return res.status(400).send('No file uploaded.');
@@ -98,16 +98,18 @@ app.post('/upload', upload.single('image'), async (req, res) => {
   }
 });
 
-
+// Apstrādā neapstrādu funkcijas atraidijumu
 process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
+// Apstrādā neapstrādātas ķļūdas
 process.on('uncaughtException', (error) => {
   console.error('Uncaught Exception:', error);
   process.exit(1);
 });
 
+// Start server
 app.listen(port, () => {
   console.log(`Vehicle Exit Service running on port ${port}`);
 });

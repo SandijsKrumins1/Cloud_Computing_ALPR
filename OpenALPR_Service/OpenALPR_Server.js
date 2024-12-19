@@ -14,7 +14,7 @@ const app = express();
 app.use(cors());
 const port = process.env.PORT || 3003;
 
-
+// Izveido jaunu nodemailer transportieri ar kūru tiek sūtīti epasti
 const transporter = nodemailer.createTransport({
   host: "smtp.mailersend.net",
   port: 587,
@@ -25,7 +25,7 @@ const transporter = nodemailer.createTransport({
   }
 });
 
-
+// Izveido jaunu Minio klientu
 const minioClient = new Minio.Client({
   endPoint: process.env.MINIO_ENDPOINT,
   port: parseInt(process.env.MINIO_PORT, 10),
@@ -35,7 +35,7 @@ const minioClient = new Minio.Client({
 });
 
 let collection;
-
+// Izveido savienojumu ar MongoDB
 async function connectMongo() {
   try {
     const mongoClient = new mongo.MongoClient(process.env.MONGO_URL);
@@ -49,7 +49,7 @@ async function connectMongo() {
   }
 }
 
-
+// Izveido savienojumu ar RabbitMQ
 let rabbitChannel;
 async function connectToRabbitMQ() {
   try {
@@ -66,7 +66,7 @@ async function connectToRabbitMQ() {
   }
 }
 
-
+// Apstrādā ievades rindu
 async function processEntry(rabbitChannel) {
   rabbitChannel.consume(process.env.QUEUE_NAME_ENTRY, async (msg) => {
     if (msg) {
@@ -86,7 +86,7 @@ async function processEntry(rabbitChannel) {
   });
 }
 
-
+// Apstrādā ievades numurzīmi un saglabā mongoDB
 async function processEntryImage(fileName, email) {
   const localFilePath = path.join(__dirname, fileName);
   const bucketName = process.env.MINIO_BUCKET;
@@ -110,7 +110,7 @@ async function processEntryImage(fileName, email) {
   }
 }
 
-
+// Apstrādā izejas rindu
 async function processExit(rabbitChannel) {
   rabbitChannel.consume(process.env.QUEUE_NAME_EXIT, async (msg) => {
     if (msg) {
@@ -129,7 +129,7 @@ async function processExit(rabbitChannel) {
   });
 }
 
-
+// Apstrāda izejas numurzīmi saglabā to mongoDB un nosūta epastu
 async function processExitImage(fileName) {
   const localFilePath = path.join(__dirname, fileName);
   const bucketName = process.env.MINIO_BUCKET;
@@ -159,7 +159,7 @@ async function processExitImage(fileName) {
   }
 }
 
-
+// nodzēš failu no lokālā konteinera
 function deleteLocalFile(filePath) {
   fs.unlink(filePath, (err) => {
     if (err) console.error('Failed to delete local file:', err);
@@ -167,7 +167,7 @@ function deleteLocalFile(filePath) {
   });
 }
 
-
+// Pārveido dotu laiku no ms uz dienam stundām min un sekundēm
 async function dhm(ms) {
   const days = Math.floor(ms / (24 * 60 * 60 * 1000));
   const daysms = ms % (24 * 60 * 60 * 1000);
@@ -178,7 +178,7 @@ async function dhm(ms) {
   return `${days} days ${hours} hours ${minutes} mins ${sec} secs`;
 }
 
-
+// Funkcija kas izmanto OpenALPR lai atpazītu numurzīmi
 async function runALPR(fileName) {
   return new Promise((resolve, reject) => {
     const command = `alpr -c eu -j ${fileName}`;
@@ -193,16 +193,23 @@ async function runALPR(fileName) {
     });
   });
 }
+// Iniciālizē vajadzīgos savienojumus
+(async () => {
+  try {
+    await connectMongo();
+    await connectToRabbitMQ().catch(console.error);
+  } catch (error) {
+    console.error('Initialization failed:', error.message);
+    process.exit(1);
+  }
+})();
 
-
-connectMongo();
-connectToRabbitMQ().catch(console.error);
-
-
+// Apstrādā neapstrādu funkcijas atraidijumu
 process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled Rejection:', reason);
 });
 
+// Apstrādā neapstrādātas ķļūdas
 process.on('uncaughtException', (error) => {
   console.error('Uncaught Exception:', error);
   process.exit(1);
